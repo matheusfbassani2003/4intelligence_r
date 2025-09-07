@@ -1,0 +1,414 @@
+---
+output:
+  word_document: default
+  html_document: default
+  pdf_document: default
+---
+# Questão 1:
+
+```{r}
+#Instalando Pacotes
+install.packages("readxl")
+install.packages("tidyverse")
+install.packages("dplyr")
+install.packages("tsibble")
+install.packages("feasts")
+install.packages("forecast")
+install.packages("fable")
+install.packages("patchwork")
+install.packages("janitor")
+```
+
+
+```{r}
+#Library
+library(readxl)
+library(tidyverse)
+library(dplyr)
+library(tsibble)
+library(feasts)
+library(forecast)
+library(fable)
+library(patchwork)
+library(janitor)
+```
+
+```{r}
+# Carregando base
+Diesel <- read_excel("vendas_distribuidoras_anp 1 (2).xlsx", sheet = 1)
+Gasolina <- read_excel("vendas_distribuidoras_anp 1 (2).xlsx", sheet = 2)
+Etanol <- read_excel("vendas_distribuidoras_anp 1 (2).xlsx", sheet = 3)
+
+```
+
+```{r}
+# Arrumando a base
+Diesel.L <- Diesel %>% 
+  pivot_longer(
+    cols = starts_with("20"),
+    names_to = "ano",
+    values_to = "valor"
+    
+  ) %>% 
+  mutate(
+    ano = as.numeric(ano),
+    valor = as.numeric(gsub(",", ".", valor))
+  )%>% 
+  filter(!is.na(valor))
+Gasolina.L <- Gasolina %>% 
+  pivot_longer(
+    cols = starts_with("20"),
+    names_to = "ano",
+    values_to = "valor"
+    
+  ) %>% 
+  mutate(
+    ano = as.numeric(ano),
+    valor = as.numeric(gsub(",", ".", valor)))%>% 
+  filter(!is.na(valor))
+
+Etanol.L <- Etanol %>% 
+  pivot_longer(
+    cols = starts_with("20"),
+    names_to = "ano",
+    values_to = "valor"
+    
+  ) %>% 
+  mutate(
+    ano = as.numeric(ano),
+    valor = as.numeric(gsub(",", ".", valor))
+)%>% 
+  filter(!is.na(valor))
+
+```
+
+```{r}
+#Sazonalidade Gasolina
+Gasolina.TS <- Gasolina.L %>%
+  mutate(datas = yearmonth(make_date(ano, meses))) %>%
+   select(-ano, -meses) %>%
+  as_tsibble(index = datas, key = regiao)
+Gasolina.TS %>%
+  filter(regiao == "br") %>%
+  fill_gaps() %>%
+  gg_season(valor) +
+  labs(
+    title = "Sazonalidade do Valor da Gasolina no BR",
+    y = "Valor",
+    x = "Mês"
+  )
+
+
+Gasolina.TS %>%
+  filter(regiao == "br") %>%
+
+  model(STL(valor ~ season(window = "periodic"))) %>%
+  components() %>%
+  autoplot() +
+  labs(title = "Decomposição da Série de Vendas de Gasolina no BR")
+```
+```{r}
+#Comparação por Estado
+estados_para_comparar <- c("df", "sp", "go", "rj", "ma
+","mt", "mg", "pa", "to" ) 
+
+Gasolina.TS %>%
+  filter(regiao %in% estados_para_comparar) %>%
+  group_by(regiao) %>%
+  slice(min(which(!is.na(valor))):max(which(!is.na(valor)))) %>%
+  ungroup() %>%
+  
+# Decomposição  
+  model(STL(valor)) %>%
+  components() %>%
+  autoplot() +
+  labs(title = "Comparação da Decomposição entre Estados")
+#Sazonalidade
+componentes_estados <- Gasolina.TS %>%
+  filter(regiao %in% estados_para_comparar) %>%
+  model(STL(valor)) %>%
+  components()
+ggplot(data = componentes_estados, aes(x = datas, y = season_year)) +
+  geom_line() +
+  facet_wrap(~ regiao, ncol = 1, scales = "free_y") + # Cria os painéis
+  labs(
+    title = "Componente Sazonal por Estado (Painéis Separados)",
+    y = "Efeito Sazonal",
+    x = "Data"
+  )
+```
+
+```{r}
+#Sazonalidade Etanol
+Etanol.TS <- Etanol.L %>%
+  mutate(datas = yearmonth(make_date(ano, meses))) %>%
+   select(-ano, -meses) %>%
+  as_tsibble(index = datas, key = regiao)
+
+Etanol.TS %>%
+  filter(regiao == "br") %>%
+  fill_gaps() %>%
+  gg_season(valor) +
+  labs(
+    title = "Sazonalidade do Valor do Etanol no Brasil",
+    y = "Valor",
+    x = "Mês"
+  )
+
+
+Etanol.TS %>%
+  filter(regiao == "br") %>%
+
+  model(STL(valor ~ season(window = "periodic"))) %>%
+  components() %>%
+  autoplot() +
+  labs(title = "Decomposição da Série de Vendas de Etanol no Brasil")
+```
+```{r}
+#Comparação por Estado
+Etanol.TS %>%
+  filter(regiao %in% estados_para_comparar) %>%
+  group_by(regiao) %>%
+  slice(min(which(!is.na(valor))):max(which(!is.na(valor)))) %>%
+  ungroup() %>%
+  
+# Decomposição  
+  model(STL(valor)) %>%
+  components() %>%
+  autoplot() +
+  labs(title = "Comparação da Decomposição entre Estados de Etanol")
+#Sazonalidade
+componentes_estadosE <- Etanol.TS %>%
+  filter(regiao %in% estados_para_comparar) %>%
+  model(STL(valor)) %>%
+  components()
+ggplot(data = componentes_estadosE, aes(x = datas, y = season_year)) +
+  geom_line() +
+  facet_wrap(~ regiao, ncol = 1, scales = "free_y") + 
+  labs(
+    title = "Componente Sazonal por Estado de Etanol",
+    y = "Efeito Sazonal",
+    x = "Data"
+  )
+```
+```{r}
+#Sazonalidade Diesel
+Diesel.TS <- Diesel.L %>%
+  mutate(datas = yearmonth(make_date(ano, meses))) %>%
+   select(-ano, -meses) %>%
+  as_tsibble(index = datas, key = regiao)
+
+Diesel.TS %>%
+  filter(regiao == "br") %>%
+  fill_gaps() %>%
+  gg_season(valor) +
+  labs(
+    title = "Sazonalidade do Valor do Diesel no Brasil",
+    y = "Valor",
+    x = "Mês"
+  )
+
+
+Diesel.TS %>%
+  filter(regiao == "br") %>%
+
+  model(STL(valor ~ season(window = "periodic"))) %>%
+  components() %>%
+  autoplot() +
+  labs(title = "Decomposição da Série de Vendas de Diesel no Brasil")
+```
+```{r}
+Diesel.TS %>%
+  filter(regiao %in% estados_para_comparar) %>%
+  group_by(regiao) %>%
+  slice(min(which(!is.na(valor))):max(which(!is.na(valor)))) %>%
+  ungroup() %>%
+  
+# Decomposição  
+  model(STL(valor)) %>%
+  components() %>%
+  autoplot() +
+  labs(title = "Comparação da Decomposição entre Estados Diesel")
+#Sazonalidade
+componentes_estados <- Diesel.TS %>%
+  filter(regiao %in% estados_para_comparar) %>%
+  model(STL(valor)) %>%
+  components()
+ggplot(data = componentes_estados, aes(x = datas, y = season_year)) +
+  geom_line() +
+  facet_wrap(~ regiao, ncol = 1, scales = "free_y") + # Cria os painéis
+  labs(
+    title = "Componente Sazonal por Estado de Diesel",
+    y = "Efeito Sazonal",
+    x = "Data"
+  )
+```
+```{r}
+# Sazonalidade de todos os Combustiveis
+Combustiveis.L <- bind_rows(Gasolina.L, Diesel.L, Etanol.L) %>%
+  mutate(
+    ano = as.numeric(ano),
+    valor = as.numeric(valor)
+  ) %>%
+  filter(!is.na(valor), valor > 0)
+
+TotalCombustiveis.L <- Combustiveis.L %>%
+  group_by(regiao, ano, meses) %>%
+  summarise(valor_total = sum(valor, na.rm = TRUE)) %>%
+  ungroup()
+
+TotalCombustiveis.TS <- TotalCombustiveis.L %>%
+  mutate(datas = yearmonth(make_date(ano, meses))) %>%
+  select(regiao, valor_total, datas) %>%
+  as_tsibble(index = datas, key = regiao)
+
+TotalCombustiveis.TS %>%
+  filter(regiao == "df") %>%
+  model(STL(valor_total)) %>%
+  components() %>%
+  ggplot(aes(x = datas, y = season_year)) +
+  geom_line(color = "blue", linewidth = 0.8) +
+  labs(
+    title = "Sazonalidade Geral de Vendas de Combustíveis no DF",
+    subtitle = "Soma de Gasolina, Diesel e Etanol",
+    y = "Efeito Sazonal",
+    x = "Data"
+  )
+```
+
+```{r}
+# Evolução do consumo de Gasolina
+Gasolina.TS %>%
+  filter(regiao %in% estados_para_comparar) %>%
+  autoplot(valor) + 
+  labs(
+    title = "Evolução do Consumo Mensal de Gasolina",
+    subtitle = "Comparação entre os principais estados",
+    y = "Volume Vendido (em m³)",
+    x = "Data",
+    color = "Estado"
+  )
+
+```
+
+```{r}
+mercado_total_estado <- Combustiveis.L %>%
+  group_by(regiao) %>%
+  summarise(volume_total = sum(valor, na.rm = TRUE))
+# Criando Gráfico de mercaod total
+ggplot(data = mercado_total_estado, 
+       aes(x = volume_total, y = reorder(regiao, volume_total))) +
+  geom_col(fill = "Green") +
+  scale_x_continuous(labels = scales::label_number(scale = 1e-6, suffix = "M", big.mark = ".")) +
+  labs(
+    title = "Tamanho Total do Mercado de Combustíveis por Estado (2000-2021)",
+    subtitle = "Soma de Gasolina, Diesel e Etanol",
+    x = "Volume Total Vendido (em Milhões de m³)",
+    y = "Estado"
+  )
+evolucao_nacional <- Combustiveis.L %>%
+  filter(regiao == "br") %>%
+  mutate(datas = make_date(ano, meses)) %>%
+  filter(ano >= 2017) %>%
+  arrange(datas)
+
+# Agora, criamos o gráfico de linha do tempo
+ggplot(data = evolucao_nacional, aes(x = datas, y = valor, group = 1)) +
+  geom_line(color = "#D55E00", linewidth = 1) + 
+  geom_smooth(method = "lm", se = FALSE, color = "black", linetype = "dashed") + 
+  scale_y_continuous(labels = scales::label_number(scale = 1e-6, suffix = "M", big.mark = ".")) +
+  scale_x_date(date_breaks = "1 year", date_labels = "%Y") +
+  labs(
+    title = "Evolução do Consumo Total de Combustíveis no Brasil (Últimos 5 Anos)",
+    subtitle = "Soma de Gasolina, Diesel e Etanol (2017-2021)",
+    x = "Ano",
+    y = "Volume Mensal Vendido (em Milhões de m³)")
+```
+# Questão 2
+
+```{r}
+Frota <- read_excel("frota-reg-uf-tipo-modelo-dezembro-2021.xlsx")
+```
+```{r}
+PIB <- read_excel("PIB.xlsx")
+names(PIB)
+PIB$`PIB em 2021 (1.000.000 R$)` <- as.numeric(gsub(",", ".", PIB$`PIB em 2021 (1.000.000 R$)`))
+```
+```{r}
+Pop <- read_excel("tabela631.xlsx")
+names(Pop)
+Pop <- na.omit(Pop)
+Pop <- Pop %>%
+  mutate(
+   Total = as.numeric(`Total`),
+  )
+```
+
+
+
+
+```{r}
+# Criando dificionarios para a siglas da ANP
+de_para_uf <- tibble(
+  uf_sigla = c("ac", "al", "ap", "am", "ba", "ce", "df", "es", "go", "ma", "mt", "ms", 
+               "mg", "pa", "pb", "pr", "pe", "pi", "rj", "rn", "rs", "ro", "rr", 
+               "sc", "sp", "se", "to"),
+  uf_nome = c("Acre", "Alagoas", "Amapá", "Amazonas", "Bahia", "Ceará", "Distrito Federal", 
+              "Espírito Santo", "Goiás", "Maranhão", "Mato Grosso", "Mato Grosso do Sul", 
+              "Minas Gerais", "Pará", "Paraíba", "Paraná", "Pernambuco", "Piauí", 
+              "Rio de Janeiro", "Rio Grande do Norte", "Rio Grande do Sul", "Rondônia", 
+              "Roraima", "Santa Catarina", "São Paulo", "Sergipe", "Tocantins")
+)
+
+#Consumo de Combustíveis
+caminho_anp <- "vendas_distribuidoras_anp 1 (2).xlsx"
+consumo_2021 <- TotalCombustiveis.L %>%
+  filter(regiao != "br")%>%
+  left_join(de_para_uf, by = c("regiao" = "uf_sigla"))
+
+#PIB 
+pib_2021 <- read_excel("PIB.Xlsx") %>%
+  clean_names() %>%
+  select(uf_nome = unidades_da_federacao, valor_total = pib_em_2021_1_000_000_r) %>%
+  slice(-1)
+
+#Frota
+frota_2021 <- Frota %>%
+  clean_names() %>%
+  select(uf_nome = grandes_regioes_e_unidades_da_federacao, valor_total = total) %>%
+  filter(!uf_nome %in% c("NORTE", "NORDESTE", "CENTRO-OESTE", "SUDESTE", "SUL", "BRASIL"))
+
+#População (2021) 
+populacao_2021 <- Pop %>%
+  select(uf_nome = UF, valor_total = `Total`)
+
+#limitando os estados para os da ANP
+lista_estados_validos <- consumo_2021$uf_nome
+
+#Criando os Gráficos de Consumo x PIB x População x Frota de carros
+p_consumo <- ggplot(consumo_2021, aes(x = valor_total, y = reorder(uf_nome, valor_total))) +
+  geom_col(fill = "green") + labs(title = "Consumo de Combustíveis", y = NULL, x = NULL)
+
+p_pib <- pib_2021 %>%
+  filter(uf_nome %in% lista_estados_validos) %>%
+  ggplot(aes(x = valor_total, y = reorder(uf_nome, valor_total))) +
+  geom_col(fill = "blue") + labs(title = "PIB", y = NULL, x = NULL)
+
+p_frota <- frota_2021 %>%
+  filter(uf_nome %in% lista_estados_validos) %>%
+  ggplot(aes(x = valor_total, y = reorder(uf_nome, valor_total))) +
+  geom_col(fill = "red") + labs(title = "Frota de Veículos", y = NULL, x = NULL)
+  
+p_populacao <- populacao_2021 %>%
+  filter(uf_nome %in% lista_estados_validos) %>%
+  ggplot(aes(x = valor_total, y = reorder(uf_nome, valor_total))) +
+  geom_col(fill = "purple") + labs(title = "População", y = NULL, x = NULL)
+
+#Juntando os gráficos
+(p_consumo | p_pib) / (p_frota | p_populacao) + 
+  plot_annotation(
+    title = 'Ranking dos Estados por Categoria (2021)',
+    subtitle = 'Comparativo entre Consumo, PIB, Frota e População',
+    caption = "Fonte: Dados da ANP, IBGE e Senatran"
+  )
+```
